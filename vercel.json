@@ -1,0 +1,17 @@
+{
+
+  "redirects": [
+
+    {
+
+      "source": "/",
+
+      "destination": "/research",
+
+      "permanent": false
+
+    }
+
+  ]
+
+}
