@@ -1,0 +1,2595 @@
+
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { supabase } from "../lib/supabase";
+
+type Product = { id:number; name:string; english:string; price:number; shop:string; emoji:string; category:"top"|"bottom"|"dress"|"shoes"|"accessory"|"coat"; colors:string[]; image:string };
+type CartItem = {productId:number;color:string};
+type HistoryItem = {mission:string;points:number;date:string};
+type Player = {id:string;nickname:string;points:number;completed:number;history:HistoryItem[];activeMission:number|null;cart:CartItem[];earned:number;bonus:number;surpriseUsed:boolean;badges:string[];listeningBest:number};
+type Screen = "home"|"shop"|"fitting"|"listening"|"receipt";
+type Stage = "greeting"|"request"|"color"|"price"|"decision";
+type ProductRow = [number,string,string,number,string,string,Product["category"],string[],string];
+
+const missions = [
+  {name:"Une soirée à Paris",target:2,reserve:0,description:"Prépare une tenue pour une soirée parisienne."},
+  {name:"Un week-end à Paris",target:3,reserve:0,description:"Choisis des vêtements pour ton week-end."},
+  {name:"Le défi du budget",target:2,reserve:15,description:"Fais tes achats et garde au moins 15 €."}
+];
+
+const productRows: ProductRow[][] = [
+  [
+    [101,"une robe","a dress",32,"La Boutique Chic","👗","dress",["rouge","bleu","noir"],"https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=600"],
+    [102,"une chemise","a shirt",22,"La Boutique Chic","👔","top",["blanc","bleu","rose"],"https://images.unsplash.com/photo-1598032895397-b9472444bf93?w=600"],
+    [103,"un pantalon","trousers",28,"La Boutique Chic","👖","bottom",["noir","bleu","gris"],"https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=600"],
+    [104,"une jupe","a skirt",24,"La Boutique Chic","👗","bottom",["rose","noir","vert"],"https://images.unsplash.com/photo-1583496661160-fb5886a13d77?w=600"],
+    [105,"des chaussures","shoes",35,"Les Chaussures de Paris","👠","shoes",["noir","rouge","blanc"],"https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=600"],
+    [106,"un sac","a bag",25,"Les Accessoires","👜","accessory",["marron","noir","rose"],"https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600"],
+    [107,"un chapeau","a hat",16,"Les Accessoires","👒","accessory",["beige","noir","blanc"],"https://images.unsplash.com/photo-1521369909029-2afed882baee?w=600"],
+    [108,"une veste","a jacket",38,"La Boutique Chic","🧥","coat",["bleu","noir","vert"],"https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=600"],
+    [109,"un t-shirt","a T-shirt",15,"La Boutique Chic","👕","top",["blanc","jaune","bleu"],"https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600"],
+    [110,"un pull","a sweater",29,"La Boutique Chic","🧶","top",["rose","beige","gris"],"https://images.unsplash.com/photo-1576566588028-4147f3842f27?w=600"],
+    [111,"des baskets","sneakers",30,"Les Chaussures de Paris","👟","shoes",["blanc","noir","bleu"],"https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600"],
+    [112,"une écharpe","a scarf",12,"Les Accessoires","🧣","accessory",["rouge","vert","bleu"],"https://images.unsplash.com/photo-1606761568499-6d2451b23c66?w=600"]
+  ],
+  [
+    [201,"un jean","jeans",30,"Mode Parisienne","👖","bottom",["bleu","noir","gris"],"https://images.unsplash.com/photo-1542272604-787c3835535d?w=600"],
+    [202,"un manteau","a coat",48,"Mode Parisienne","🧥","coat",["beige","noir","marron"],"https://images.unsplash.com/photo-1539533018447-63fcce2678e3?w=600"],
+    [203,"une casquette","a cap",14,"Les Accessoires","🧢","accessory",["rouge","bleu","noir"],"https://images.unsplash.com/photo-1588850561407-ed78c282e89b?w=600"],
+    [204,"un sweat","a sweatshirt",26,"Mode Parisienne","👕","top",["gris","bleu","rose"],"https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=600"],
+    [205,"des bottes","boots",44,"Les Chaussures de Paris","👢","shoes",["noir","marron","beige"],"https://images.unsplash.com/photo-1608256246200-53e635b5b65f?w=600"],
+    [206,"un short","shorts",20,"Mode Parisienne","🩳","bottom",["bleu","beige","noir"],"https://images.unsplash.com/photo-1591195853828-11db59a44f6b?w=600"],
+    [207,"un cardigan","a cardigan",34,"Mode Parisienne","🧶","top",["beige","rose","gris"],"https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=600"],
+    [208,"des lunettes de soleil","sunglasses",18,"Les Accessoires","🕶️","accessory",["noir","marron","rose"],"https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=600"],
+    [209,"une ceinture","a belt",15,"Les Accessoires","🪢","accessory",["noir","marron","beige"],"https://images.unsplash.com/photo-1624222247344-550fb60583dc?w=600"],
+    [210,"un polo","a polo shirt",24,"Mode Parisienne","👕","top",["blanc","bleu","vert"],"https://images.unsplash.com/photo-1586363104862-3a5e2ab60d99?w=600"],
+    [211,"une robe d'été","a summer dress",36,"Mode Parisienne","👗","dress",["jaune","rose","bleu"],"https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?w=600"],
+    [212,"des sandales","sandals",22,"Les Chaussures de Paris","🩴","shoes",["beige","noir","blanc"],"https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=600"]
+  ],
+  [
+    [301,"un blazer","a blazer",52,"Paris Élégance","🧥","coat",["noir","bleu","beige"],"https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=600"],
+    [302,"une blouse","a blouse",27,"Paris Élégance","👚","top",["blanc","rose","bleu"],"https://images.unsplash.com/photo-1564257577-7cadc3d29c6e?w=600"],
+    [303,"un pantalon élégant","smart trousers",39,"Paris Élégance","👖","bottom",["noir","gris","beige"],"https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=600"],
+    [304,"une robe noire","a black dress",46,"Paris Élégance","👗","dress",["noir","rouge","bleu"],"https://images.unsplash.com/photo-1539008835657-9e8e9680c956?w=600"],
+    [305,"des talons","high heels",42,"Les Chaussures de Paris","👠","shoes",["noir","rouge","beige"],"https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=600"],
+    [306,"une montre","a watch",31,"Les Accessoires","⌚","accessory",["noir","marron","gris"],"https://images.unsplash.com/photo-1524592094714-0f0654e20314?w=600"],
+    [307,"un collier","a necklace",19,"Les Accessoires","📿","accessory",["doré","argenté","rose"],"https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=600"],
+    [308,"un foulard","a silk scarf",17,"Les Accessoires","🧣","accessory",["rouge","bleu","rose"],"https://images.unsplash.com/photo-1606761568499-6d2451b23c66?w=600"],
+    [309,"un gilet","a vest",25,"Paris Élégance","🦺","top",["noir","gris","beige"],"https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=600"],
+    [310,"une jupe plissée","a pleated skirt",33,"Paris Élégance","👗","bottom",["rose","noir","bleu"],"https://images.unsplash.com/photo-1583496661160-fb5886a13d77?w=600"],
+    [311,"des mocassins","loafers",37,"Les Chaussures de Paris","👞","shoes",["marron","noir","beige"],"https://images.unsplash.com/photo-1533867617858-e7b97e060509?w=600"],
+    [312,"un sac à main","a handbag",41,"Les Accessoires","👜","accessory",["noir","beige","rouge"],"https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600"]
+  ]
+];
+
+const catalogs:Product[][] = productRows.map(rows=>rows.map(([id,name,english,price,shop,emoji,category,colors,image])=>({id,name,english,price,shop,emoji,category,colors,image})));
+const allProducts = catalogs.flat();
+
+const colorHex:Record<string,string> = {rouge:"#e64855",bleu:"#4f86d9",noir:"#252631",blanc:"#f8f8f6",rose:"#ed9cbd",vert:"#55a67d",gris:"#969ba5",marron:"#8b624a",beige:"#d8c3a5",jaune:"#efc64d",doré:"#d4ae4d",argenté:"#b7bec8"};
+const numberWords:Record<number,string> = {10:"dix",11:"onze",12:"douze",13:"treize",14:"quatorze",15:"quinze",16:"seize",17:"dix-sept",18:"dix-huit",19:"dix-neuf",20:"vingt",21:"vingt et un",22:"vingt-deux",23:"vingt-trois",24:"vingt-quatre",25:"vingt-cinq",26:"vingt-six",27:"vingt-sept",28:"vingt-huit",29:"vingt-neuf",30:"trente",31:"trente et un",32:"trente-deux",33:"trente-trois",34:"trente-quatre",35:"trente-cinq",36:"trente-six",37:"trente-sept",38:"trente-huit",39:"trente-neuf",40:"quarante",41:"quarante et un",42:"quarante-deux",43:"quarante-trois",44:"quarante-quatre",45:"quarante-cinq",46:"quarante-six",47:"quarante-sept",48:"quarante-huit",49:"quarante-neuf",50:"cinquante",51:"cinquante et un",52:"cinquante-deux"};
+
+const badgeDefs = [
+  {id:"premier-achat",name:"Premier achat",emoji:"🛍️",description:"Faire ton premier achat"},
+  {id:"fashionista",name:"Fashionista",emoji:"👗",description:"Acheter cinq articles"},
+  {id:"polyglotte",name:"Polyglotte",emoji:"🗣️",description:"Réussir cinq dialogues"},
+  {id:"oreille",name:"Oreille d'or",emoji:"🎧",description:"Obtenir un excellent score d'écoute"},
+  {id:"styliste",name:"Styliste",emoji:"✨",description:"Créer une tenue"},
+  {id:"explorateur",name:"Explorateur de Paris",emoji:"🗼",description:"Terminer les trois missions"}
+];
+
+function speak(text:string) {
+  if(typeof window==="undefined" || !("speechSynthesis" in window)) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang="fr-FR";
+  utterance.rate=0.83;
+  const voices=window.speechSynthesis.getVoices();
+  const french=voices.find(v=>v.lang.toLowerCase().startsWith("fr"));
+  if(french) utterance.voice=french;
+  window.speechSynthesis.speak(utterance);
+}
+
+function normalize(value:string) {
+  return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 ]/g,"").trim();
+}
+
+function Photo({product,className=""}:{product:Product;className?:string}) {
+  const [failed,setFailed]=useState(false);
+  return failed
+    ? <div className={`flex items-center justify-center bg-[#f3e7ef] text-6xl ${className}`}>{product.emoji}</div>
+    : <img src={product.image} alt={product.name} className={`object-cover ${className}`} onError={()=>setFailed(true)}/>;
+}
+
+function Dot({color}:{color:string}) {
+  return <span className="inline-block h-5 w-5 rounded-full border border-black/15" style={{backgroundColor:colorHex[color]||color}}/>;
+}
+
+function newPlayer(id: string, nickname: string): Player {
+  return {
+    id,
+    nickname,
+    points: 0,
+    completed: 0,
+    history: [],
+    activeMission: null,
+    cart: [],
+    earned: 0,
+    bonus: 0,
+    surpriseUsed: false,
+    badges: [],
+    listeningBest: 0,
+  };
+}
+
+function fromRow(row: Record<string, unknown>): Player {
+  return {
+    id: String(row.id),
+    nickname: String(row.nickname ?? "Élève"),
+    points: Number(row.points ?? 0),
+    completed: Number(row.completed ?? 0),
+    history: Array.isArray(row.history)
+      ? (row.history as HistoryItem[])
+      : [],
+    activeMission:
+      typeof row.active_mission === "number"
+        ? row.active_mission
+        : null,
+    cart: Array.isArray(row.cart)
+      ? (row.cart as CartItem[])
+      : [],
+    earned: Number(row.earned ?? 0),
+    bonus: Number(row.bonus ?? 0),
+    surpriseUsed: Boolean(row.surprise_used),
+    badges: Array.isArray(row.badges)
+      ? (row.badges as string[])
+      : [],
+    listeningBest: Number(row.listening_best ?? 0),
+  };
+}
+
+function toRow(p: Player) {
+  return {
+    id: p.id,
+    nickname: p.nickname,
+    points: p.points,
+    completed: p.completed,
+    history: p.history,
+    active_mission: p.activeMission,
+    cart: p.cart,
+    earned: p.earned,
+    bonus: p.bonus,
+    surprise_used: p.surpriseUsed,
+    badges: p.badges,
+    listening_best: p.listeningBest,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export default function Home() {
+  const [loaded, setLoaded] = useState(false);
+  const [player, setPlayer] = useState<Player | null>(null);
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [nickname, setNickname] = useState("");
+
+  const [authMode, setAuthMode] = useState<"login" | "register">(
+    "login"
+  );
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authMessage, setAuthMessage] = useState("");
+
+  const [saving, setSaving] = useState<
+    "saved" | "saving" | "error"
+  >("saved");
+
+  const [screen, setScreen] = useState<Screen>("home");
+  const [shop, setShop] = useState("Toutes les boutiques");
+  const [selected, setSelected] = useState<Product | null>(null);
+  const [stage, setStage] = useState<Stage>("greeting");
+  const [chosenColor, setChosenColor] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [hint, setHint] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const [listeningIndex, setListeningIndex] = useState(0);
+  const [listeningScore, setListeningScore] = useState(0);
+  const [listeningAnswered, setListeningAnswered] =
+    useState(false);
+  const [listeningFeedback, setListeningFeedback] = useState("");
+
+  const [outfitSelection, setOutfitSelection] = useState<number[]>(
+    []
+  );
+  const [outfitFeedback, setOutfitFeedback] = useState("");
+
+  const [receipt, setReceipt] = useState<{
+    mission: string;
+    items: CartItem[];
+    earned: number;
+    spent: number;
+    remaining: number;
+  } | null>(null);
+
+  const playerRef = useRef<Player | null>(null);
+  const pendingRef = useRef<Promise<void>>(Promise.resolve());
+  const generationRef = useRef(0);
+  const revisionRef = useRef(0);
+  const savedRevisionRef = useRef(0);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    let active = true;
+
+    async function load() {
+      try {
+        const {
+          data: { user },
+          error,
+        } = await supabase.auth.getUser();
+
+        if (error) throw error;
+        if (!active) return;
+
+        if (user && !user.is_anonymous) {
+          const {
+            data,
+            error: dbError,
+          } = await supabase
+            .from("student_progress")
+            .select("*")
+            .eq("id", user.id)
+            .maybeSingle();
+
+          if (dbError) throw dbError;
+          if (!active) return;
+
+          const p = data
+            ? fromRow(data as Record<string, unknown>)
+            : null;
+
+          playerRef.current = p;
+          setPlayer(p);
+
+          if (!p) {
+            setAuthMessage(
+              "Compte connecté. Saisis ton pseudo pour créer ton profil."
+            );
+          }
+        }
+      } catch (e) {
+        if (active) {
+          setAuthMessage(
+            e instanceof Error
+              ? e.message
+              : "Connexion impossible."
+          );
+        }
+      } finally {
+        if (active) setLoaded(true);
+      }
+    }
+
+    void load();
+
+    return () => {
+      active = false;
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // Save progress in order to avoid older updates
+  // overwriting newer student progress.
+  function queueSave(p: Player) {
+    const generation = generationRef.current;
+    const revision = ++revisionRef.current;
+
+    setSaving("saving");
+
+    pendingRef.current = pendingRef.current
+      .catch(() => {})
+      .then(async () => {
+        if (generation !== generationRef.current) return;
+
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (
+          authError ||
+          !user ||
+          user.id !== p.id ||
+          user.is_anonymous
+        ) {
+          throw new Error(
+            "Session expirée. Reconnecte-toi."
+          );
+        }
+
+        const { error } = await supabase
+          .from("student_progress")
+          .upsert(toRow(p), { onConflict: "id" });
+
+        if (error) throw error;
+
+        savedRevisionRef.current = revision;
+
+        if (
+          mountedRef.current &&
+          generation === generationRef.current &&
+          revision === revisionRef.current
+        ) {
+          setSaving("saved");
+        }
+      })
+      .catch((e) => {
+        if (
+          mountedRef.current &&
+          generation === generationRef.current
+        ) {
+          setSaving("error");
+          setAuthMessage(
+            e instanceof Error
+              ? `Sauvegarde impossible : ${e.message}`
+              : "Sauvegarde impossible."
+          );
+        }
+      });
+  }
+
+  function updatePlayer(fn: (p: Player) => Player) {
+    const current = playerRef.current;
+    if (!current) return;
+
+    const next = fn(current);
+    if (next === current) return;
+
+    playerRef.current = next;
+    setPlayer(next);
+    queueSave(next);
+  }
+
+  function addPoints(amount: number) {
+    updatePlayer((p) => {
+      const total = p.points + amount;
+
+      return {
+        ...p,
+        points: total,
+        earned: p.earned + amount,
+        badges:
+          total >= 200
+            ? Array.from(new Set([...p.badges, "star"]))
+            : p.badges,
+      };
+    });
+  }
+
+  function unlockBadge(id: string, points = 0) {
+    updatePlayer((p) => {
+      if (p.badges.includes(id)) return p;
+
+      const total = p.points + points;
+
+      return {
+        ...p,
+        points: total,
+        earned: p.earned + points,
+        badges: Array.from(
+          new Set([
+            ...p.badges,
+            id,
+            ...(total >= 200 ? ["star"] : []),
+          ])
+        ),
+      };
+    });
+  }
+
+  async function handleAuth() {
+    if (authBusy) return;
+
+    setAuthMessage("");
+
+    const e = email.trim().toLowerCase();
+
+    if (!e || password.length < 6) {
+      setAuthMessage(
+        "Saisis un e-mail et un mot de passe d'au moins 6 caractères."
+      );
+      return;
+    }
+
+    if (authMode === "register" && !nickname.trim()) {
+      setAuthMessage(
+        "Choisis un prénom ou un pseudo."
+      );
+      return;
+    }
+
+    setAuthBusy(true);
+
+    try {
+      if (authMode === "register") {
+        const { data, error } = await supabase.auth.signUp({
+          email: e,
+          password,
+          options: {
+            data: {
+              nickname: nickname.trim().slice(0, 30),
+            },
+          },
+        });
+
+        if (error) throw error;
+
+        if (!data.session) {
+          setAuthMessage(
+            "Vérifie ton e-mail, puis reviens te connecter."
+          );
+          setAuthMode("login");
+     } else if (data.user) {
+  await loadAccount(
+    data.user.id,
+    nickname.trim().slice(0, 30)
+  );
+}
+      } else {
+        const { data, error } =
+          await supabase.auth.signInWithPassword({
+            email: e,
+            password,
+          });
+
+        if (error) throw error;
+
+        await loadAccount(data.user.id);
+      }
+
+      setPassword("");
+    } catch (e) {
+      setAuthMessage(
+        e instanceof Error
+          ? e.message
+          : "Connexion impossible."
+      );
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function loadAccount(
+    userId: string,
+    requestedNickname?: string
+  ) {
+    const { data, error } = await supabase
+      .from("student_progress")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    let p: Player;
+
+    if (data) {
+      p = fromRow(data as Record<string, unknown>);
+    } else {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      const name =
+        requestedNickname ||
+        String(user?.user_metadata?.nickname ?? "")
+          .trim()
+          .slice(0, 30);
+
+      if (!name) {
+        setAuthMessage(
+          "Compte connecté. Saisis ton pseudo pour créer ton profil."
+        );
+        setNickname("");
+        return;
+      }
+
+      p = newPlayer(userId, name);
+
+      const { error: insertError } = await supabase
+        .from("student_progress")
+        .insert(toRow(p));
+
+      if (insertError) throw insertError;
+    }
+
+    generationRef.current++;
+    pendingRef.current = Promise.resolve();
+    revisionRef.current = 0;
+    savedRevisionRef.current = 0;
+
+    playerRef.current = p;
+    setPlayer(p);
+    setScreen("home");
+    setAuthMessage("");
+    setSaving("saved");
+  }
+
+  async function createMissingProfile() {
+    if (!nickname.trim()) return;
+
+    setAuthBusy(true);
+
+    try {
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
+
+      if (error || !user || user.is_anonymous) {
+        throw new Error(
+          "Reconnecte-toi pour créer ton profil."
+        );
+      }
+
+      await loadAccount(
+        user.id,
+        nickname.trim().slice(0, 30)
+      );
+    } catch (e) {
+      setAuthMessage(
+        e instanceof Error
+          ? e.message
+          : "Impossible de créer le profil."
+      );
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function signOut() {
+    setAuthBusy(true);
+
+    try {
+      await pendingRef.current.catch(() => {});
+
+      if (
+        saving === "error" &&
+        !window.confirm(
+          "La dernière sauvegarde a échoué. Se déconnecter quand même ?"
+        )
+      ) {
+        return;
+      }
+
+      const { error } = await supabase.auth.signOut();
+
+      if (error) throw error;
+
+      generationRef.current++;
+      playerRef.current = null;
+
+      setPlayer(null);
+      setSelected(null);
+      setScreen("home");
+      setAuthMessage("");
+      setSaving("saved");
+      setEmail("");
+      setPassword("");
+    } catch (e) {
+      setAuthMessage(
+        e instanceof Error
+          ? e.message
+          : "Déconnexion impossible."
+      );
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  const missionIndex = player?.activeMission;
+
+  const mission =
+    missionIndex !== null && missionIndex !== undefined
+      ? missions[missionIndex]
+      : null;
+
+  const catalog =
+    missionIndex !== null && missionIndex !== undefined
+      ? catalogs[missionIndex] ?? []
+      : [];
+
+  const shops = [
+    "Toutes les boutiques",
+    ...Array.from(new Set(catalog.map((p) => p.shop))),
+  ];
+
+  const spent = (player?.cart ?? []).reduce(
+    (sum, item) =>
+      sum +
+      (allProducts.find((p) => p.id === item.productId)
+        ?.price ?? 0),
+    0
+  );
+
+  const remaining = 50 + (player?.bonus ?? 0) - spent;
+
+  const canCheckout = Boolean(
+    player &&
+      mission &&
+      player.cart.length >= mission.target &&
+      remaining >= mission.reserve
+  );
+
+  const cartEntries = (player?.cart ?? [])
+    .map((item, index) => ({
+      item,
+      index,
+      product: allProducts.find(
+        (p) => p.id === item.productId
+      ),
+    }))
+    .filter(
+      (
+        entry
+      ): entry is {
+        item: CartItem;
+        index: number;
+        product: Product;
+      } => Boolean(entry.product)
+    );
+
+  function goHome() {
+    setSelected(null);
+    setScreen("home");
+    setMessage("");
+    setAnswer("");
+    setHint(false);
+  }
+
+  function startMission(index: number) {
+    if (!player) return;
+
+    updatePlayer((p) => ({
+      ...p,
+      activeMission: index,
+      cart: [],
+      earned: 0,
+      bonus: 0,
+      surpriseUsed: false,
+    }));
+
+    setShop("Toutes les boutiques");
+    setSelected(null);
+    setMessage("");
+    setScreen("shop");
+  }
+
+  function openProduct(product: Product) {
+    if (!player || !mission) return;
+
+    setSelected(product);
+    setStage("greeting");
+    setChosenColor(product.colors[0]);
+    setAnswer("");
+    setHint(false);
+    setMessage("");
+  }
+
+  function advance() {
+    if (!selected) return;
+
+    const response = normalize(answer);
+
+    if (stage === "greeting") {
+      if (
+        response.includes("bonjour") ||
+        response.includes("bonsoir") ||
+        response.includes("salut")
+      ) {
+        addPoints(5);
+        setStage("request");
+        setMessage("Bravo ! +5 points");
+      } else {
+        setMessage(
+          "Essaie de saluer le vendeur en français."
+        );
+        return;
+      }
+    }
+
+    if (stage === "request") {
+      if (
+        response.includes("voudrais") ||
+        response.includes("veux") ||
+        response.includes("cherche") ||
+        response.includes("aimerais") ||
+        response.includes("acheter") ||
+        response.includes("s il vous plait") ||
+        response.includes("svp")
+      ) {
+        addPoints(10);
+        setStage("color");
+        setMessage("Très bien ! +10 points");
+      } else {
+        setMessage(
+          "Utilise « Je voudrais... » ou « Je cherche... »."
+        );
+        return;
+      }
+    }
+
+    if (stage === "color") {
+      if (
+        response.includes(normalize(chosenColor)) ||
+        response.includes("couleur")
+      ) {
+        addPoints(5);
+        setStage("price");
+        setMessage("Excellent ! +5 points");
+      } else {
+        setMessage(
+          `Essaie d'utiliser la couleur « ${chosenColor} ».`
+        );
+        return;
+      }
+    }
+
+    if (stage === "price") {
+      if (
+        response.includes("combien") ||
+        response.includes("prix") ||
+        response.includes("coute") ||
+        response.includes("euros")
+      ) {
+        addPoints(10);
+        setStage("decision");
+        setMessage("Formidable ! +10 points");
+      } else {
+        setMessage(
+          "Demande : « Combien ça coûte ? »"
+        );
+        return;
+      }
+    }
+
+    setAnswer("");
+    setHint(false);
+  }
+
+  function purchase() {
+    if (!selected || !player) return;
+
+    const alreadyBought = player.cart.some(
+      (item) => item.productId === selected.id
+    );
+
+    if (alreadyBought) {
+      setMessage(
+        "Tu as déjà acheté cet article. Choisis-en un autre."
+      );
+      return;
+    }
+
+    if (selected.price > remaining) {
+      setMessage(
+        "Tu n'as pas assez d'argent pour cet article."
+      );
+      return;
+    }
+
+    updatePlayer((p) => {
+      const nextCart = [
+        ...p.cart,
+        {
+          productId: selected.id,
+          color: chosenColor,
+        },
+      ];
+
+      const nextBadges = [...p.badges];
+
+      if (!nextBadges.includes("premier-achat")) {
+        nextBadges.push("premier-achat");
+      }
+
+      if (
+        nextCart.length >= 5 &&
+        !nextBadges.includes("fashionista")
+      ) {
+        nextBadges.push("fashionista");
+      }
+
+      return {
+        ...p,
+        cart: nextCart,
+        points: p.points + 15,
+        earned: p.earned + 15,
+        badges: nextBadges,
+      };
+    });
+
+    speak("Merci beaucoup ! Au revoir !");
+    setMessage("Achat réussi ! +15 points");
+    setSelected(null);
+    setStage("greeting");
+    setAnswer("");
+  }
+
+  function surprise() {
+    if (!player || player.surpriseUsed) return;
+
+    const rewards = [5, 10, 15, 20];
+    const reward =
+      rewards[Math.floor(Math.random() * rewards.length)];
+
+    updatePlayer((p) => ({
+      ...p,
+      bonus: p.bonus + reward,
+      surpriseUsed: true,
+      points: p.points + 5,
+      earned: p.earned + 5,
+    }));
+
+    setMessage(
+      `Surprise ! Tu as gagné ${reward} € pour tes achats et 5 points !`
+    );
+  }
+
+  function finishMission() {
+    if (!player || !mission || !canCheckout) {
+      setMessage(
+        "Complète les achats nécessaires avant de terminer."
+      );
+      return;
+    }
+
+    const purchasedItems = [...player.cart];
+    const totalSpent = spent;
+    const moneyLeft = remaining;
+
+    const completionBonus = 50;
+    const budgetBonus =
+      missionIndex === 2 && moneyLeft >= 15 ? 25 : 0;
+
+    const earnedThisMission =
+      player.earned + completionBonus + budgetBonus;
+
+    const alreadyCompleted = player.history.some(
+      (entry) => entry.mission === mission.name
+    );
+
+    const newHistoryItem: HistoryItem = {
+      mission: mission.name,
+      points: earnedThisMission,
+      date: new Date().toISOString(),
+    };
+
+    updatePlayer((p) => {
+      const nextHistory = [
+        ...p.history,
+        newHistoryItem,
+      ];
+
+      const nextCompleted = new Set(
+        nextHistory.map((entry) => entry.mission)
+      ).size;
+
+      const badges = [...p.badges];
+
+      if (
+        nextCompleted >= 3 &&
+        !badges.includes("explorateur")
+      ) {
+        badges.push("explorateur");
+      }
+
+      if (
+        nextHistory.length >= 5 &&
+        !badges.includes("polyglotte")
+      ) {
+        badges.push("polyglotte");
+      }
+
+      return {
+        ...p,
+        points:
+          p.points + completionBonus + budgetBonus,
+        earned: earnedThisMission,
+        completed: nextCompleted,
+        history: nextHistory,
+        activeMission: null,
+        cart: [],
+        bonus: 0,
+        surpriseUsed: false,
+        badges,
+      };
+    });
+
+    setReceipt({
+      mission: mission.name,
+      items: purchasedItems,
+      earned: earnedThisMission,
+      spent: totalSpent,
+      remaining: moneyLeft,
+    });
+
+    setSelected(null);
+    setMessage(
+      alreadyCompleted
+        ? "Mission rejouée avec succès !"
+        : "Félicitations ! Mission accomplie !"
+    );
+    setScreen("receipt");
+  }
+
+  const listeningQuestions = [
+    {
+      audio:
+        "Bonjour ! Je voudrais acheter une robe rouge, s'il vous plaît.",
+      question: "Quel vêtement veut acheter la cliente ?",
+      options: [
+        "Une robe rouge",
+        "Un pantalon bleu",
+        "Une veste noire",
+      ],
+      correct: 0,
+    },
+    {
+      audio:
+        "Ce pantalon coûte vingt-huit euros.",
+      question: "Combien coûte le pantalon ?",
+      options: ["18 €", "28 €", "38 €"],
+      correct: 1,
+    },
+    {
+      audio:
+        "Je cherche des chaussures noires.",
+      question: "Quelle couleur cherche le client ?",
+      options: ["Blanche", "Rouge", "Noire"],
+      correct: 2,
+    },
+    {
+      audio:
+        "La chemise bleue coûte vingt-deux euros.",
+      question: "Quel article coûte 22 € ?",
+      options: [
+        "La chemise bleue",
+        "La jupe rose",
+        "Le chapeau beige",
+      ],
+      correct: 0,
+    },
+    {
+      audio:
+        "Je voudrais essayer cette veste verte.",
+      question: "Que veut faire la cliente ?",
+      options: [
+        "Payer la veste",
+        "Essayer la veste",
+        "Retourner la veste",
+      ],
+      correct: 1,
+    },
+  ];
+
+  const listeningQuestion =
+    listeningQuestions[listeningIndex];
+
+  function startListening() {
+    setListeningIndex(0);
+    setListeningScore(0);
+    setListeningAnswered(false);
+    setListeningFeedback("");
+    setScreen("listening");
+  }
+
+  function answerListening(index: number) {
+    if (listeningAnswered || !listeningQuestion) return;
+
+    const correct = index === listeningQuestion.correct;
+
+    if (correct) {
+      setListeningScore((score) => score + 1);
+      addPoints(10);
+      setListeningFeedback(
+        "Bonne réponse ! +10 points"
+      );
+    } else {
+      setListeningFeedback(
+        `Pas tout à fait. La bonne réponse est : ${
+          listeningQuestion.options[
+            listeningQuestion.correct
+          ]
+        }.`
+      );
+    }
+
+    setListeningAnswered(true);
+  }
+
+  function nextListening() {
+    if (
+      listeningIndex <
+      listeningQuestions.length - 1
+    ) {
+      setListeningIndex((index) => index + 1);
+      setListeningAnswered(false);
+      setListeningFeedback("");
+      return;
+    }
+
+    const finalScore = listeningScore;
+
+    updatePlayer((p) => ({
+      ...p,
+      listeningBest: Math.max(
+        p.listeningBest,
+        finalScore
+      ),
+      badges:
+        finalScore >= 4 &&
+        !p.badges.includes("oreille")
+          ? [...p.badges, "oreille"]
+          : p.badges,
+    }));
+
+    setListeningIndex(listeningQuestions.length);
+    setListeningFeedback(
+      `Tu as obtenu ${finalScore} sur ${
+        listeningQuestions.length
+      } !`
+    );
+  }
+
+  function openFittingRoom() {
+    setOutfitSelection([]);
+    setOutfitFeedback("");
+    setScreen("fitting");
+  }
+
+  function toggleOutfitItem(productId: number) {
+    setOutfitSelection((current) =>
+      current.includes(productId)
+        ? current.filter((id) => id !== productId)
+        : [...current, productId]
+    );
+
+    setOutfitFeedback("");
+  }
+
+  function checkOutfit() {
+    if (!player) return;
+
+    const selectedProducts = outfitSelection
+      .map((id) =>
+        allProducts.find((p) => p.id === id)
+      )
+      .filter((p): p is Product => Boolean(p));
+
+    const categories = selectedProducts.map(
+      (p) => p.category
+    );
+
+    const hasTop = categories.includes("top");
+    const hasBottom = categories.includes("bottom");
+    const hasDress = categories.includes("dress");
+    const hasShoes = categories.includes("shoes");
+
+    const valid =
+      hasShoes &&
+      (hasDress || (hasTop && hasBottom));
+
+    if (!valid) {
+      setOutfitFeedback(
+        "Pour créer une tenue complète, choisis une robe et des chaussures, ou un haut, un bas et des chaussures."
+      );
+      return;
+    }
+
+    const alreadyAwarded =
+      player.badges.includes("styliste");
+
+    updatePlayer((p) => ({
+      ...p,
+      points: p.points + (alreadyAwarded ? 5 : 20),
+      earned: p.earned + (alreadyAwarded ? 5 : 20),
+      badges: alreadyAwarded
+        ? p.badges
+        : [...p.badges, "styliste"],
+    }));
+
+    setOutfitFeedback(
+      alreadyAwarded
+        ? "Magnifique tenue ! +5 points"
+        : "Tu es styliste ! Badge débloqué et +20 points !"
+    );
+  }
+
+  function removeCartItem(index: number) {
+    updatePlayer((p) => ({
+      ...p,
+      cart: p.cart.filter((_, i) => i !== index),
+    }));
+  }
+
+  const visibleProducts = catalog.filter(
+    (product) =>
+      shop === "Toutes les boutiques" ||
+      product.shop === shop
+  );
+
+  const progressPercent = player
+    ? Math.min(100, (player.completed / 3) * 100)
+    : 0;
+
+  const level = !player
+    ? "Débutant"
+    : player.points >= 500
+      ? "Expert parisien"
+      : player.points >= 250
+        ? "Fashionista"
+        : player.points >= 100
+          ? "Explorateur"
+          : "Débutant";
+
+  if (!loaded) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#fff4f8]">
+        <div className="text-center">
+          <div className="mb-4 text-6xl">🗼</div>
+          <h1 className="text-3xl font-black text-[#b63c72]">
+            Mission Paris
+          </h1>
+          <p className="mt-3 text-gray-600">
+            Chargement de ton aventure...
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  if (!player) {
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-[#fff4f8] via-[#fff9ed] to-[#eef8ff] px-4 py-12">
+        <div className="mx-auto max-w-md">
+          <div className="mb-8 text-center">
+            <div className="mb-4 text-7xl">🗼</div>
+
+            <h1 className="text-4xl font-black text-[#b63c72]">
+              Mission Paris
+            </h1>
+
+            <p className="mt-2 text-lg font-semibold text-gray-700">
+              Le Shopping Secret
+            </p>
+
+            <p className="mt-3 text-sm text-gray-600">
+              Apprends le français en faisant du shopping
+              à Paris !
+            </p>
+          </div>
+
+          <div className="rounded-3xl border border-pink-100 bg-white p-7 shadow-xl">
+            <div className="mb-6 flex gap-2 rounded-2xl bg-pink-50 p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode("login");
+                  setAuthMessage("");
+                }}
+                className={`flex-1 rounded-xl px-3 py-3 text-sm font-bold transition ${
+                  authMode === "login"
+                    ? "bg-[#b63c72] text-white shadow"
+                    : "text-[#8d4767]"
+                }`}
+              >
+                Se connecter
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode("register");
+                  setAuthMessage("");
+                }}
+                className={`flex-1 rounded-xl px-3 py-3 text-sm font-bold transition ${
+                  authMode === "register"
+                    ? "bg-[#b63c72] text-white shadow"
+                    : "text-[#8d4767]"
+                }`}
+              >
+                S'inscrire
+              </button>
+            </div>
+
+            <h2 className="mb-5 text-center text-2xl font-black text-gray-800">
+              {authMode === "login"
+                ? "Bon retour à Paris !"
+                : "Bienvenue à Paris !"}
+            </h2>
+
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleAuth();
+              }}
+              className="space-y-4"
+            >
+              {authMode === "register" && (
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-gray-700">
+                    Ton prénom ou ton pseudo
+                  </label>
+
+                  <input
+                    type="text"
+                    value={nickname}
+                    onChange={(event) =>
+                      setNickname(event.target.value)
+                    }
+                    maxLength={30}
+                    placeholder="Ex. : Sophie"
+                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-gray-800 outline-none focus:border-pink-400"
+                    required
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="mb-2 block text-sm font-bold text-gray-700">
+                  Adresse e-mail
+                </label>
+
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(event) =>
+                    setEmail(event.target.value)
+                  }
+                  placeholder="tonadresse@email.com"
+                  autoComplete="email"
+                  className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-gray-800 outline-none focus:border-pink-400"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-bold text-gray-700">
+                  Mot de passe
+                </label>
+
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) =>
+                    setPassword(event.target.value)
+                  }
+                  minLength={6}
+                  placeholder="6 caractères minimum"
+                  autoComplete={
+                    authMode === "register"
+                      ? "new-password"
+                      : "current-password"
+                  }
+                  className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-gray-800 outline-none focus:border-pink-400"
+                  required
+                />
+              </div>
+
+              {authMessage && (
+                <div
+                  role="status"
+                  className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900"
+                >
+                  {authMessage}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={authBusy}
+                className="w-full rounded-2xl bg-[#b63c72] px-5 py-4 font-black text-white shadow-lg transition hover:bg-[#982e5c] disabled:opacity-60"
+              >
+                {authBusy
+                  ? "Un instant..."
+                  : authMode === "login"
+                    ? "Entrer dans Paris 🗼"
+                    : "Créer mon compte ✨"}
+              </button>
+            </form>
+
+            <p className="mt-5 text-center text-xs leading-relaxed text-gray-500">
+              Ton compte te permet de retrouver tes points,
+              tes badges et tes missions lorsque tu te
+              reconnectes.
+            </p>
+          </div>
+
+          <p className="mt-6 text-center text-sm text-gray-500">
+            Une aventure de français pour la classe de
+            Mme Graham 🇫🇷
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-[#fff9f6] text-gray-800">
+      <header className="sticky top-0 z-30 border-b border-pink-100 bg-white/95 shadow-sm backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4">
+          <button
+            type="button"
+            onClick={goHome}
+            className="flex items-center gap-2 text-left"
+          >
+            <span className="text-3xl">🗼</span>
+
+            <div>
+              <div className="text-xl font-black leading-tight text-[#b63c72]">
+                Mission Paris
+              </div>
+
+              <div className="text-xs font-semibold text-gray-500">
+                Le Shopping Secret
+              </div>
+            </div>
+          </button>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-yellow-100 px-3 py-2 text-sm font-bold text-yellow-800">
+              ⭐ {player.points} points
+            </span>
+
+            <span className="rounded-full bg-pink-100 px-3 py-2 text-sm font-bold text-[#9e3464]">
+              👤 {player.nickname}
+            </span>
+
+            <span
+              className={`rounded-full px-3 py-2 text-xs font-bold ${
+                saving === "saved"
+                  ? "bg-green-100 text-green-800"
+                  : saving === "saving"
+                    ? "bg-blue-100 text-blue-800"
+                    : "bg-red-100 text-red-800"
+              }`}
+            >
+              {saving === "saved"
+                ? "✓ Sauvegardé"
+                : saving === "saving"
+                  ? "↻ Sauvegarde..."
+                  : "⚠ Erreur de sauvegarde"}
+            </span>
+
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              disabled={authBusy}
+              className="rounded-full border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Se déconnecter
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {authMessage && (
+        <div
+          role="alert"
+          className="mx-auto mt-4 max-w-7xl rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          {authMessage}
+        </div>
+      )}
+
+      {screen === "home" && (
+        <div className="mx-auto max-w-7xl px-4 py-8">
+          <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#b63c72] via-[#d75b87] to-[#ed9caa] p-7 text-white shadow-xl md:p-10">
+            <div className="relative z-10 max-w-2xl">
+              <p className="mb-3 text-sm font-bold uppercase tracking-widest text-pink-100">
+                Bienvenue à Paris 🇫🇷
+              </p>
+
+              <h1 className="text-4xl font-black leading-tight md:text-5xl">
+                Bonjour, {player.nickname} !
+              </h1>
+
+              <p className="mt-4 max-w-xl text-lg leading-relaxed text-white/95">
+                Prêt(e) pour une aventure parisienne ?
+                Explore les boutiques, parle français,
+                choisis tes vêtements et gagne des points !
+              </p>
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                <span className="rounded-full bg-white/20 px-4 py-2 text-sm font-bold">
+                  ⭐ {player.points} points
+                </span>
+
+                <span className="rounded-full bg-white/20 px-4 py-2 text-sm font-bold">
+                  🏆 {level}
+                </span>
+
+                <span className="rounded-full bg-white/20 px-4 py-2 text-sm font-bold">
+                  🎯 {player.completed}/3 missions
+                </span>
+              </div>
+            </div>
+
+            <div className="pointer-events-none absolute -bottom-8 right-4 text-[130px] opacity-25 md:right-12">
+              🗼
+            </div>
+          </section>
+
+          <section className="mt-8 rounded-3xl bg-white p-6 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-xl font-black text-gray-800">
+                Ta progression
+              </h2>
+
+              <span className="text-sm font-bold text-[#b63c72]">
+                {player.completed} / 3
+              </span>
+            </div>
+
+            <div className="h-4 overflow-hidden rounded-full bg-pink-100">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-pink-400 to-[#b63c72] transition-all"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+
+            <p className="mt-3 text-sm text-gray-500">
+              Termine les trois missions pour devenir
+              un véritable explorateur de Paris !
+            </p>
+          </section>
+
+          <section className="mt-10">
+            <div className="mb-5 flex items-end justify-between gap-3">
+              <div>
+                <p className="text-sm font-bold uppercase tracking-wider text-[#b63c72]">
+                  Tes aventures
+                </p>
+
+                <h2 className="mt-1 text-3xl font-black">
+                  Choisis ta mission
+                </h2>
+              </div>
+
+              <span className="text-4xl">🛍️</span>
+            </div>
+
+            <div className="grid gap-5 md:grid-cols-3">
+              {missions.map((item, index) => {
+                const completed = player.history.some(
+                  (entry) => entry.mission === item.name
+                );
+
+                return (
+                  <div
+                    key={item.name}
+                    className="overflow-hidden rounded-3xl border border-pink-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
+                  >
+                    <div
+                      className={`flex h-36 items-center justify-center text-7xl ${
+                        index === 0
+                          ? "bg-[#ffe5ee]"
+                          : index === 1
+                            ? "bg-[#e7efff]"
+                            : "bg-[#fff0cf]"
+                      }`}
+                    >
+                      {index === 0
+                        ? "👗"
+                        : index === 1
+                          ? "🧳"
+                          : "💶"}
+                    </div>
+
+                    <div className="p-6">
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <span className="text-xs font-black uppercase tracking-wider text-[#b63c72]">
+                          Mission {index + 1}
+                        </span>
+
+                        {completed && (
+                          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
+                            ✓ Terminée
+                          </span>
+                        )}
+                      </div>
+
+                      <h3 className="text-xl font-black">
+                        {item.name}
+                      </h3>
+
+                      <p className="mt-3 min-h-14 text-sm leading-relaxed text-gray-600">
+                        {item.description}
+                      </p>
+
+                      <div className="mt-4 space-y-2 text-sm text-gray-600">
+                        <p>
+                          🛍️ Achète au moins{" "}
+                          <strong>{item.target} articles</strong>
+                        </p>
+
+                        <p>💰 Budget de départ : 50 €</p>
+
+                        {item.reserve > 0 && (
+                          <p>
+                            💶 Garde au moins{" "}
+                            <strong>{item.reserve} €</strong>
+                          </p>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => startMission(index)}
+                        className="mt-6 w-full rounded-2xl bg-[#b63c72] px-4 py-3 font-black text-white transition hover:bg-[#982e5c]"
+                      >
+                        {completed
+                          ? "Rejouer la mission"
+                          : "Commencer la mission"}{" "}
+                        →
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="mt-10 grid gap-5 md:grid-cols-2">
+            <button
+              type="button"
+              onClick={startListening}
+              className="rounded-3xl border border-blue-100 bg-[#edf5ff] p-7 text-left transition hover:shadow-lg"
+            >
+              <div className="text-5xl">🎧</div>
+
+              <h3 className="mt-4 text-2xl font-black text-[#315b92]">
+                Défi d'écoute
+              </h3>
+
+              <p className="mt-2 text-sm leading-relaxed text-gray-600">
+                Écoute des phrases en français et choisis
+                les bonnes réponses.
+              </p>
+
+              <p className="mt-4 font-bold text-[#315b92]">
+                Meilleur score : {player.listeningBest}/5
+              </p>
+
+              <span className="mt-4 inline-block rounded-full bg-[#315b92] px-5 py-2 font-bold text-white">
+                Jouer →
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={openFittingRoom}
+              className="rounded-3xl border border-purple-100 bg-[#f5edff] p-7 text-left transition hover:shadow-lg"
+            >
+              <div className="text-5xl">✨</div>
+
+              <h3 className="mt-4 text-2xl font-black text-[#74469b]">
+                La cabine d'essayage
+              </h3>
+
+              <p className="mt-2 text-sm leading-relaxed text-gray-600">
+                Crée une tenue parisienne avec les vêtements
+                de tes boutiques préférées.
+              </p>
+
+              <span className="mt-4 inline-block rounded-full bg-[#74469b] px-5 py-2 font-bold text-white">
+                Créer une tenue →
+              </span>
+            </button>
+          </section>
+
+          <section className="mt-10 rounded-3xl bg-white p-6 shadow-sm">
+            <h2 className="text-2xl font-black">
+              🏅 Tes badges
+            </h2>
+
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+              {badgeDefs.map((badge) => {
+                const unlocked =
+                  player.badges.includes(badge.id);
+
+                return (
+                  <div
+                    key={badge.id}
+                    className={`rounded-2xl border p-4 text-center ${
+                      unlocked
+                        ? "border-yellow-200 bg-yellow-50"
+                        : "border-gray-100 bg-gray-50 opacity-50"
+                    }`}
+                  >
+                    <div className="text-4xl">
+                      {unlocked ? badge.emoji : "🔒"}
+                    </div>
+
+                    <p className="mt-3 text-sm font-black">
+                      {badge.name}
+                    </p>
+
+                    <p className="mt-2 text-xs leading-relaxed text-gray-500">
+                      {badge.description}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {player.history.length > 0 && (
+            <section className="mt-10 rounded-3xl bg-white p-6 shadow-sm">
+              <h2 className="text-2xl font-black">
+                📖 Ton histoire
+              </h2>
+
+              <div className="mt-5 space-y-3">
+                {[...player.history]
+                  .reverse()
+                  .slice(0, 8)
+                  .map((entry, index) => (
+                    <div
+                      key={`${entry.date}-${index}`}
+                      className="flex items-center justify-between gap-3 rounded-2xl bg-pink-50 p-4"
+                    >
+                      <div>
+                        <p className="font-bold">
+                          {entry.mission}
+                        </p>
+
+                        <p className="mt-1 text-xs text-gray-500">
+                          {new Date(
+                            entry.date
+                          ).toLocaleDateString("fr-FR")}
+                        </p>
+                      </div>
+
+                      <span className="font-black text-[#b63c72]">
+                        +{entry.points} points
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+
+      {screen === "shop" && mission && (
+        <div className="mx-auto max-w-7xl px-4 py-8">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={goHome}
+              className="rounded-full bg-white px-4 py-2 text-sm font-bold text-gray-600 shadow-sm"
+            >
+              ← Retour aux missions
+            </button>
+
+            <span className="rounded-full bg-pink-100 px-4 py-2 text-sm font-bold text-[#b63c72]">
+              🗼 {mission.name}
+            </span>
+          </div>
+
+          <section className="rounded-3xl bg-gradient-to-r from-[#b63c72] to-[#e58cac] p-7 text-white shadow-lg">
+            <h1 className="text-3xl font-black">
+              Bienvenue dans les boutiques !
+            </h1>
+
+            <p className="mt-2 text-white/90">
+              Parle français avec les vendeurs pour
+              acheter tes vêtements.
+            </p>
+
+            <div className="mt-5 flex flex-wrap gap-3">
+              <span className="rounded-full bg-white/20 px-4 py-2 text-sm font-bold">
+                💰 {remaining} € disponibles
+              </span>
+
+              <span className="rounded-full bg-white/20 px-4 py-2 text-sm font-bold">
+                🛍️ {player.cart.length}/{mission.target} articles
+              </span>
+
+              <span className="rounded-full bg-white/20 px-4 py-2 text-sm font-bold">
+                ⭐ +{player.earned} points
+              </span>
+            </div>
+          </section>
+
+          <div className="mt-7 grid gap-7 lg:grid-cols-[1fr_310px]">
+            <div>
+              <div className="mb-5 flex flex-wrap gap-2">
+                {shops.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => setShop(name)}
+                    className={`rounded-full px-4 py-2 text-sm font-bold transition ${
+                      shop === name
+                        ? "bg-[#b63c72] text-white"
+                        : "bg-white text-gray-600 shadow-sm hover:bg-pink-50"
+                    }`}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+                {visibleProducts.map((product) => {
+                  const purchased = player.cart.some(
+                    (item) =>
+                      item.productId === product.id
+                  );
+
+                  return (
+                    <div
+                      key={product.id}
+                      className="overflow-hidden rounded-3xl border border-pink-100 bg-white shadow-sm transition hover:shadow-lg"
+                    >
+                      <div className="relative">
+                        <Photo
+                          product={product}
+                          className="h-44 w-full sm:h-52"
+                        />
+
+                        {purchased && (
+                          <span className="absolute right-2 top-2 rounded-full bg-green-600 px-3 py-1 text-xs font-bold text-white">
+                            ✓ Acheté
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="p-4">
+                        <p className="text-xs font-semibold text-gray-400">
+                          {product.shop}
+                        </p>
+
+                        <h3 className="mt-1 font-black">
+                          {product.name}
+                        </h3>
+
+                        <p className="mt-1 text-xs text-gray-500">
+                          {product.english}
+                        </p>
+
+                        <div className="mt-3 flex items-center justify-between">
+                          <span className="text-xl font-black text-[#b63c72]">
+                            {product.price} €
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              speak(product.name)
+                            }
+                            className="rounded-full bg-pink-50 px-3 py-2 text-sm"
+                            title="Écouter le nom"
+                          >
+                            🔊
+                          </button>
+                        </div>
+
+                        <div className="mt-3 flex gap-1.5">
+                          {product.colors.map((color) => (
+                            <Dot
+                              key={color}
+                              color={color}
+                            />
+                          ))}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openProduct(product)
+                          }
+                          disabled={purchased}
+                          className="mt-4 w-full rounded-xl bg-[#b63c72] px-3 py-3 text-sm font-black text-white transition hover:bg-[#982e5c] disabled:cursor-not-allowed disabled:bg-gray-300"
+                        >
+                          {purchased
+                            ? "Déjà acheté"
+                            : "Entrer dans la boutique"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <aside className="h-fit rounded-3xl bg-white p-5 shadow-sm lg:sticky lg:top-28">
+              <h2 className="text-xl font-black">
+                🛍️ Mon panier
+              </h2>
+
+              <p className="mt-2 text-sm text-gray-500">
+                {player.cart.length} article(s)
+              </p>
+
+              {cartEntries.length === 0 ? (
+                <div className="mt-5 rounded-2xl bg-pink-50 p-6 text-center">
+                  <div className="text-4xl">🛒</div>
+
+                  <p className="mt-3 text-sm text-gray-500">
+                    Ton panier est vide.
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-5 space-y-3">
+                  {cartEntries.map(
+                    ({ item, index, product }) => (
+                      <div
+                        key={`${product.id}-${index}`}
+                        className="flex items-center gap-3 rounded-xl bg-gray-50 p-3"
+                      >
+                        <Photo
+                          product={product}
+                          className="h-14 w-14 rounded-lg"
+                        />
+
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-bold">
+                            {product.name}
+                          </p>
+
+                          <p className="text-xs text-gray-500">
+                            {item.color}
+                          </p>
+
+                          <p className="text-sm font-black text-[#b63c72]">
+                            {product.price} €
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            removeCartItem(index)
+                          }
+                          className="rounded-full px-2 py-1 text-red-500 hover:bg-red-50"
+                          title="Retirer l'article"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
+
+              <div className="mt-5 border-t border-gray-100 pt-4">
+                <div className="flex justify-between text-sm">
+                  <span>Articles</span>
+                  <strong>{spent} €</strong>
+                </div>
+
+                <div className="mt-2 flex justify-between text-sm">
+                  <span>Budget supplémentaire</span>
+                  <strong>+{player.bonus} €</strong>
+                </div>
+
+                <div className="mt-3 flex justify-between text-lg font-black">
+                  <span>Il te reste</span>
+                  <span className="text-[#b63c72]">
+                    {remaining} €
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={surprise}
+                disabled={player.surpriseUsed}
+                className="mt-5 w-full rounded-xl bg-yellow-100 px-4 py-3 text-sm font-black text-yellow-800 disabled:opacity-50"
+              >
+                {player.surpriseUsed
+                  ? "🎁 Surprise utilisée"
+                  : "🎁 Ouvrir une surprise"}
+              </button>
+
+              {mission.reserve > 0 && (
+                <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs font-semibold text-amber-800">
+                  Attention : tu dois garder au moins{" "}
+                  {mission.reserve} € !
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={finishMission}
+                disabled={!canCheckout}
+                className="mt-4 w-full rounded-xl bg-green-600 px-4 py-4 font-black text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+              >
+                Terminer la mission ✓
+              </button>
+
+              {!canCheckout && (
+                <p className="mt-3 text-center text-xs text-gray-500">
+                  Achète au moins {mission.target} articles
+                  en respectant ton budget.
+                </p>
+              )}
+
+              {message && !selected && (
+                <p className="mt-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-800">
+                  {message}
+                </p>
+              )}
+            </aside>
+          </div>
+        </div>
+      )}
+
+      {screen === "fitting" && (
+        <div className="mx-auto max-w-7xl px-4 py-8">
+          <button
+            type="button"
+            onClick={goHome}
+            className="mb-6 rounded-full bg-white px-4 py-2 text-sm font-bold text-gray-600 shadow-sm"
+          >
+            ← Retour aux missions
+          </button>
+
+          <div className="mb-8 rounded-3xl bg-gradient-to-r from-[#74469b] to-[#c49add] p-8 text-white">
+            <div className="text-5xl">✨</div>
+            <h1 className="mt-3 text-3xl font-black">
+              La cabine d'essayage
+            </h1>
+            <p className="mt-3 text-white/90">
+              Deviens styliste ! Choisis une robe et des
+              chaussures, ou un haut, un bas et des
+              chaussures.
+            </p>
+          </div>
+
+          <div className="grid gap-8 lg:grid-cols-[1fr_300px]">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+              {allProducts.map((product) => {
+                const chosen = outfitSelection.includes(
+                  product.id
+                );
+
+                return (
+                  <button
+                    key={product.id}
+                    type="button"
+                    onClick={() =>
+                      toggleOutfitItem(product.id)
+                    }
+                    className={`overflow-hidden rounded-2xl border-2 bg-white text-left transition ${
+                      chosen
+                        ? "border-purple-500 shadow-lg"
+                        : "border-transparent shadow-sm hover:border-purple-200"
+                    }`}
+                  >
+                    <div className="relative">
+                      <Photo
+                        product={product}
+                        className="h-36 w-full"
+                      />
+
+                      {chosen && (
+                        <span className="absolute right-2 top-2 rounded-full bg-purple-600 px-2 py-1 text-xs font-bold text-white">
+                          ✓
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="p-3">
+                      <p className="text-sm font-black">
+                        {product.name}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {product.english}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <aside className="h-fit rounded-3xl bg-white p-6 shadow-sm lg:sticky lg:top-28">
+              <h2 className="text-xl font-black">
+                👗 Ma tenue
+              </h2>
+
+              <p className="mt-2 text-sm text-gray-500">
+                {outfitSelection.length} article(s)
+                sélectionné(s)
+              </p>
+
+              <div className="mt-5 space-y-3">
+                {outfitSelection.length === 0 ? (
+                  <div className="rounded-2xl bg-purple-50 p-6 text-center">
+                    <div className="text-4xl">👚</div>
+                    <p className="mt-3 text-sm text-gray-500">
+                      Choisis des vêtements pour
+                      commencer.
+                    </p>
+                  </div>
+                ) : (
+                  outfitSelection.map((id) => {
+                    const product = allProducts.find(
+                      (item) => item.id === id
+                    );
+
+                    if (!product) return null;
+
+                    return (
+                      <div
+                        key={id}
+                        className="flex items-center gap-3 rounded-xl bg-purple-50 p-3"
+                      >
+                        <Photo
+                          product={product}
+                          className="h-14 w-14 rounded-lg"
+                        />
+
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold">
+                            {product.name}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {product.category}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            toggleOutfitItem(id)
+                          }
+                          className="px-2 text-red-500"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={checkOutfit}
+                disabled={outfitSelection.length === 0}
+                className="mt-6 w-full rounded-xl bg-[#74469b] px-4 py-4 font-black text-white hover:bg-[#603682] disabled:bg-gray-300"
+              >
+                Vérifier ma tenue ✨
+              </button>
+
+              {outfitFeedback && (
+                <p className="mt-4 rounded-xl bg-purple-50 p-4 text-sm font-semibold text-purple-900">
+                  {outfitFeedback}
+                </p>
+              )}
+            </aside>
+          </div>
+        </div>
+      )}
+
+      {screen === "listening" && (
+        <div className="mx-auto max-w-3xl px-4 py-8">
+          <button
+            type="button"
+            onClick={goHome}
+            className="mb-6 rounded-full bg-white px-4 py-2 text-sm font-bold text-gray-600 shadow-sm"
+          >
+            ← Retour aux missions
+          </button>
+
+          <div className="rounded-3xl bg-gradient-to-r from-[#315b92] to-[#8bb8ed] p-8 text-white">
+            <div className="text-5xl">🎧</div>
+            <h1 className="mt-3 text-3xl font-black">
+              Le défi d'écoute
+            </h1>
+            <p className="mt-3 text-white/90">
+              Écoute attentivement et choisis la bonne
+              réponse !
+            </p>
+          </div>
+
+          {listeningIndex <
+          listeningQuestions.length ? (
+            <div className="mt-7 rounded-3xl bg-white p-7 shadow-sm">
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <span className="text-sm font-bold text-[#315b92]">
+                  Question {listeningIndex + 1} /{" "}
+                  {listeningQuestions.length}
+                </span>
+
+                <span className="rounded-full bg-yellow-100 px-3 py-2 text-sm font-black text-yellow-800">
+                  ⭐ {listeningScore} bonne(s)
+                  réponse(s)
+                </span>
+              </div>
+
+              <div className="mb-7 h-3 overflow-hidden rounded-full bg-blue-100">
+                <div
+                  className="h-full rounded-full bg-[#315b92]"
+                  style={{
+                    width: `${
+                      ((listeningIndex + 1) /
+                        listeningQuestions.length) *
+                      100
+                    }%`,
+                  }}
+                />
+              </div>
+
+              <div className="rounded-2xl bg-blue-50 p-7 text-center">
+                <div className="text-6xl">🔊</div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    speak(listeningQuestion.audio)
+                  }
+                  className="mt-5 rounded-2xl bg-[#315b92] px-7 py-4 font-black text-white hover:bg-[#254875]"
+                >
+                  ▶ Écouter la phrase
+                </button>
+
+                <p className="mt-4 text-sm text-gray-500">
+                  Tu peux écouter plusieurs fois.
+                </p>
+              </div>
+
+              <h2 className="mt-8 text-xl font-black">
+                {listeningQuestion.question}
+              </h2>
+
+              <div className="mt-5 space-y-3">
+                {listeningQuestion.options.map(
+                  (option, index) => (
+                    <button
+                      key={option}
+                      type="button"
+                      disabled={listeningAnswered}
+                      onClick={() =>
+                        answerListening(index)
+                      }
+                      className={`w-full rounded-2xl border-2 px-5 py-4 text-left font-bold transition ${
+                        listeningAnswered &&
+                        index ===
+                          listeningQuestion.correct
+                          ? "border-green-500 bg-green-50 text-green-800"
+                          : "border-gray-100 bg-white hover:border-blue-300 disabled:cursor-default"
+                      }`}
+                    >
+                      <span className="mr-3 text-[#315b92]">
+                        {String.fromCharCode(65 + index)}.
+                      </span>
+                      {option}
+                    </button>
+                  )
+                )}
+              </div>
+
+              {listeningFeedback && (
+                <p className="mt-5 rounded-xl bg-blue-50 p-4 text-sm font-semibold text-blue-900">
+                  {listeningFeedback}
+                </p>
+              )}
+
+              {listeningAnswered && (
+                <button
+                  type="button"
+                  onClick={nextListening}
+                  className="mt-6 w-full rounded-2xl bg-[#315b92] px-5 py-4 font-black text-white"
+                >
+                  {listeningIndex ===
+                  listeningQuestions.length - 1
+                    ? "Voir mes résultats"
+                    : "Question suivante →"}
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="mt-7 rounded-3xl bg-white p-8 text-center shadow-sm">
+              <div className="text-7xl">
+                {listeningScore >= 4 ? "🏆" : "🎧"}
+              </div>
+
+              <h2 className="mt-5 text-3xl font-black">
+                Bravo, {player.nickname} !
+              </h2>
+
+              <p className="mt-4 text-5xl font-black text-[#315b92]">
+                {listeningScore}/
+                {listeningQuestions.length}
+              </p>
+
+              <p className="mt-4 text-gray-600">
+                {listeningFeedback}
+              </p>
+
+              {listeningScore >= 4 && (
+                <p className="mt-4 rounded-xl bg-yellow-50 p-4 font-bold text-yellow-800">
+                  🏅 Tu as gagné le badge
+                  « Oreille d'or » !
+                </p>
+              )}
+
+              <div className="mt-7 flex flex-wrap justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={startListening}
+                  className="rounded-xl bg-[#315b92] px-6 py-3 font-bold text-white"
+                >
+                  Rejouer
+                </button>
+
+                <button
+                  type="button"
+                  onClick={goHome}
+                  className="rounded-xl bg-gray-100 px-6 py-3 font-bold text-gray-700"
+                >
+                  Accueil
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {screen === "receipt" && receipt && (
+        <div className="mx-auto max-w-2xl px-4 py-10">
+          <div className="overflow-hidden rounded-3xl bg-white shadow-xl">
+            <div className="bg-gradient-to-r from-green-500 to-emerald-600 p-8 text-center text-white">
+              <div className="text-7xl">🎉</div>
+
+              <h1 className="mt-4 text-3xl font-black">
+                Mission accomplie !
+              </h1>
+
+              <p className="mt-3 text-white/90">
+                {receipt.mission}
+              </p>
+            </div>
+
+            <div className="p-7">
+              <h2 className="text-xl font-black">
+                🧾 Ton reçu parisien
+              </h2>
+
+              <div className="mt-5 space-y-3">
+                {receipt.items.map((item, index) => {
+                  const product = allProducts.find(
+                    (p) => p.id === item.productId
+                  );
+
+                  if (!product) return null;
+
+                  return (
+                    <div
+                      key={`${item.productId}-${index}`}
+                      className="flex items-center gap-3 border-b border-dashed border-gray-200 pb-3"
+                    >
+                      <Photo
+                        product={product}
+                        className="h-16 w-16 rounded-xl"
+                      />
+
+                      <div className="flex-1">
+                        <p className="font-bold">
+                          {product.name}
+                        </p>
+
+                        <p className="text-xs text-gray-500">
+                          Couleur : {item.color}
+                        </p>
+                      </div>
+
+                      <span className="font-black">
+                        {product.price} €
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-6 space-y-3 rounded-2xl bg-green-50 p-5">
+                <div className="flex justify-between">
+                  <span>Total dépensé</span>
+                  <strong>{receipt.spent} €</strong>
+                </div>
+
+                <div className="flex justify-between">
+                  <span>Argent restant</span>
+                  <strong>{receipt.remaining} €</strong>
+                </div>
+
+                <div className="flex justify-between border-t border-green-200 pt-3 text-lg">
+                  <span className="font-black">
+                    Points gagnés
+                  </span>
+
+                  <span className="font-black text-green-700">
+                    +{receipt.earned}
+                  </span>
+                </div>
+              </div>
+
+              <p className="mt-6 text-center text-lg font-bold text-[#b63c72]">
+                Félicitations ! Tu as fait du shopping
+                en français !
+              </p>
+
+              <button
+                type="button"
+                onClick={goHome}
+                className="mt-7 w-full rounded-2xl bg-[#b63c72] px-5 py-4 font-black text-white hover:bg-[#982e5c]"
+              >
+                Retour à Paris 🗼
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selected && screen === "shop" && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setSelected(null);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Acheter ${selected.name}`}
+            className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-3xl bg-white shadow-2xl"
+          >
+            <div className="flex items-center justify-between border-b border-pink-100 p-5">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-[#b63c72]">
+                  Dialogue en français
+                </p>
+
+                <h2 className="mt-1 text-xl font-black">
+                  {selected.shop}
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelected(null)}
+                className="rounded-full bg-gray-100 px-3 py-2 font-bold text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6">
+              <div className="flex gap-4">
+                <Photo
+                  product={selected}
+                  className="h-32 w-28 rounded-2xl"
+                />
+
+                <div className="flex-1">
+                  <h3 className="text-xl font-black">
+                    {selected.name}
+                  </h3>
+
+                  <p className="mt-1 text-sm text-gray-500">
+                    {selected.english}
+                  </p>
+
+                  <p className="mt-3 text-2xl font-black text-[#b63c72]">
+                    {selected.price} €
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      speak(selected.name)
+                    }
+                    className="mt-3 rounded-full bg-pink-50 px-4 py-2 text-sm font-bold text-[#b63c72]"
+                  >
+                    🔊 Écouter
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-2xl bg-pink-50 p-5">
+                <p className="text-xs font-black uppercase tracking-wider text-[#b63c72]">
+                  Le vendeur
+                </p>
+
+                <p className="mt-2 text-lg font-semibold">
+                  {stage === "greeting"
+                    ? "Bonjour ! Bienvenue dans notre boutique !"
+                    : stage === "request"
+                      ? "Comment puis-je vous aider ?"
+                      : stage === "color"
+                        ? "Quelle couleur préférez-vous ?"
+                        : stage === "price"
+                          ? `Très bon choix ! ${selected.name} est disponible en ${chosenColor}.`
+                          : `Cet article coûte ${selected.price} euros. Voulez-vous l'acheter ?`}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    speak(
+                      stage === "greeting"
+                        ? "Bonjour ! Bienvenue dans notre boutique !"
+                        : stage === "request"
+                          ? "Comment puis-je vous aider ?"
+                          : stage === "color"
+                            ? "Quelle couleur préférez-vous ?"
+                            : stage === "price"
+                              ? `Très bon choix ! ${selected.name} est disponible en ${chosenColor}.`
+                              : `Cet article coûte ${selected.price} euros. Voulez-vous l'acheter ?`
+                    )
+                  }
+                  className="mt-3 rounded-full bg-white px-4 py-2 text-sm font-bold text-[#b63c72]"
+                >
+                  🔊 Écouter le vendeur
+                </button>
+              </div>
+
+              {stage !== "decision" ? (
+                <>
+                  <div className="mt-6">
+                    <p className="text-sm font-black text-gray-700">
+                      À toi de parler !
+                    </p>
+
+                    <p className="mt-2 text-sm text-gray-500">
+                      {stage === "greeting"
+                        ? "Salue le vendeur en français."
+                        : stage === "request"
+                          ? `Demande poliment ${selected.name}.`
+                          : stage === "color"
+                            ? "Dis quelle couleur tu préfères."
+                            : "Demande le prix de l'article."}
+                    </p>
+                  </div>
+
+                  {stage === "color" && (
+                    <div className="mt-4">
+                      <p className="mb-2 text-sm font-bold">
+                        Choisis une couleur :
+                      </p>
+
+                      <div className="flex flex-wrap gap-2">
+                        {selected.colors.map((color) => (
+                          <button
+                            key={color}
+                            type="button"
+                            onClick={() =>
+                              setChosenColor(color)
+                            }
+                            className={`flex items-center gap-2 rounded-full border-2 px-3 py-2 text-sm font-bold ${
+                              chosenColor === color
+                                ? "border-[#b63c72] bg-pink-50"
+                                : "border-gray-200"
+                            }`}
+                          >
+                            <Dot color={color} />
+                            {color}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <input
+                    type="text"
+                    value={answer}
+                    onChange={(event) =>
+                      setAnswer(event.target.value)
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        advance();
+                      }
+                    }}
+                    placeholder="Écris ta réponse en français..."
+                    className="mt-4 w-full rounded-xl border-2 border-pink-100 px-4 py-3 outline-none focus:border-pink-400"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setHint((current) => !current)
+                    }
+                    className="mt-3 text-sm font-bold text-[#b63c72]"
+                  >
+                    💡 {hint ? "Masquer l'aide" : "Un indice"}
+                  </button>
+
+                  {hint && (
+                    <div className="mt-3 rounded-xl bg-yellow-50 p-4 text-sm text-yellow-900">
+                      {stage === "greeting"
+                        ? "Bonjour !"
+                        : stage === "request"
+                          ? `Je voudrais acheter ${selected.name}, s'il vous plaît.`
+                          : stage === "color"
+                            ? `Je préfère la couleur ${chosenColor}.`
+                            : "Combien ça coûte ?"}
+                    </div>
+                  )}
+
+                  {message && (
+                    <p className="mt-4 rounded-xl bg-blue-50 p-3 text-sm font-semibold text-blue-800">
+                      {message}
+                    </p>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={advance}
+                    disabled={!answer.trim()}
+                    className="mt-5 w-full rounded-2xl bg-[#b63c72] px-5 py-4 font-black text-white hover:bg-[#982e5c] disabled:bg-gray-300"
+                  >
+                    Envoyer ma réponse →
+                  </button>
+                </>
+              ) : (
+                <div className="mt-6">
+                  <h3 className="text-xl font-black">
+                    Veux-tu acheter cet article ?
+                  </h3>
+
+                  <p className="mt-3 text-sm text-gray-600">
+                    Prix : {selected.price} € — Il te
+                    reste {remaining} €.
+                  </p>
+
+                  {message && (
+                    <p className="mt-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-800">
+                      {message}
+                    </p>
+                  )}
+
+                  <div className="mt-6 grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={purchase}
+                      disabled={selected.price > remaining}
+                      className="rounded-2xl bg-green-600 px-4 py-4 font-black text-white hover:bg-green-700 disabled:bg-gray-300"
+                    >
+                      Oui, je l'achète !
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelected(null)}
+                      className="rounded-2xl bg-gray-100 px-4 py-4 font-black text-gray-700"
+                    >
+                      Non, merci !
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <footer className="border-t border-pink-100 bg-white px-4 py-6 text-center text-xs text-gray-500">
+        Mission Paris : Le Shopping Secret 🇫🇷
+        <span className="mx-2">•</span>
+        Apprendre le français en s'amusant
+      </footer>
+    </main>
+  );
+}
